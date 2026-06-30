@@ -1,0 +1,191 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+
+    function incomingData() {
+      return request.resource.data;
+    }
+
+    function existingData() {
+      return resource.data;
+    }
+
+    // --- User Profiles ---
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isOwner(userId)
+                    && !incomingData().keys().hasAny(['isAdmin']);
+      allow update: if isSignedIn()
+                    && (
+                      (isOwner(userId)
+                        && !incomingData().diff(existingData()).affectedKeys().hasAny(['isAdmin']))
+                      || incomingData().diff(existingData()).affectedKeys().hasOnly(['followersCount', 'followingCount'])
+                    );
+      allow delete: if isAdmin();
+
+      match /followers/{followerId} {
+        allow read: if isSignedIn();
+        // Only the follower can follow, and they must match the followerId
+        allow write: if isSignedIn() && isOwner(followerId);
+      }
+
+      match /following/{followingId} {
+        allow read: if isSignedIn();
+        // Only the user can manage who they follow
+        allow write: if isSignedIn() && isOwner(userId);
+      }
+    }
+
+    // --- Posts ---
+    match /posts/{postId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+                    && incomingData().userId == request.auth.uid
+                    && incomingData().timestamp is number;
+      allow update: if isSignedIn()
+                    && (
+                      ((isOwner(existingData().userId) || isAdmin())
+                        && incomingData().userId == existingData().userId)
+                      || incomingData().diff(existingData()).affectedKeys().hasOnly(['likesCount', 'commentsCount'])
+                    );
+      allow delete: if isSignedIn() && (isOwner(existingData().userId) || isAdmin());
+    }
+
+    // --- Comments ---
+    match /comments/{commentId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incomingData().userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && (isOwner(existingData().userId) || isAdmin());
+    }
+
+    // --- Chats ---
+    match /chats/{chatId} {
+      allow read: if isSignedIn() && request.auth.uid in existingData().participants;
+      allow create: if isSignedIn() && request.auth.uid in incomingData().participants;
+      allow update: if isSignedIn() && request.auth.uid in existingData().participants;
+
+      match /messages/{messageId} {
+        allow read: if isSignedIn() && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow create: if isSignedIn()
+                      && incomingData().senderId == request.auth.uid
+                      && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants;
+        allow update: if isSignedIn()
+                      && request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.participants
+                      && incomingData().diff(existingData()).affectedKeys().hasOnly(['seen', 'isDeletedForEveryone']);
+        allow delete: if false;
+      }
+    }
+
+    // --- Reels ---
+    match /reels/{reelId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incomingData().userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && (isOwner(existingData().userId) || isAdmin());
+    }
+
+    // --- Stories ---
+    match /stories/{storyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incomingData().userId == request.auth.uid;
+      allow delete: if isSignedIn() && (isOwner(existingData().userId) || isAdmin());
+      allow update: if isSignedIn()
+                    && incomingData().diff(existingData()).affectedKeys().hasOnly(['viewers']);
+    }
+
+    // --- Notifications ---
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && existingData().recipientId == request.auth.uid;
+      allow create: if isSignedIn() && incomingData().senderId == request.auth.uid;
+      allow update: if isSignedIn() && existingData().recipientId == request.auth.uid
+                    && incomingData().diff(existingData()).affectedKeys().hasOnly(['isRead']);
+      allow delete: if isSignedIn() && existingData().recipientId == request.auth.uid;
+    }
+
+    // --- Analytics ---
+    // Only Admin can see aggregated analytics
+    match /analytics/{docId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /content_analytics/{contentId} {
+      allow read: if isSignedIn() && (isOwner(get(/databases/$(database)/documents/posts/$(contentId)).data.userId) || isAdmin());
+      allow create, update: if isSignedIn()
+                            && incomingData().contentId == contentId
+                            && incomingData().diff(existingData()).affectedKeys().hasOnly(['contentId', 'ownerId', 'type', 'views']);
+      allow delete: if isAdmin();
+    }
+
+    match /analytics_events/{eventId} {
+      allow create: if isSignedIn() && incomingData().userId == request.auth.uid;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // --- Reports & Moderation ---
+    match /reports/{reportId} {
+      allow create: if isSignedIn() && incomingData().reporterId == request.auth.uid;
+      allow read: if isAdmin() || (isSignedIn() && existingData().reporterId == request.auth.uid);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /moderation_queue/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /moderation_actions/{actionId} {
+      allow read, write: if isAdmin();
+    }
+
+    // --- Live Streaming ---
+    match /live_streams/{streamId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incomingData().hostId == request.auth.uid;
+      allow update: if isSignedIn()
+                    && (
+                      isOwner(existingData().hostId)
+                      || isAdmin()
+                      || incomingData().diff(existingData()).affectedKeys().hasOnly(['likesCount'])
+                    );
+      allow delete: if isAdmin();
+
+      match /live_chat/{messageId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && incomingData().senderId == request.auth.uid;
+        allow update, delete: if isAdmin();
+      }
+
+      match /live_gifts/{giftId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && incomingData().senderId == request.auth.uid;
+      }
+    }
+
+    // --- Monetization & Wallet ---
+    match /wallets/{userId} {
+      allow read: if isSignedIn() && isOwner(userId);
+      allow create: if isSignedIn() && isOwner(userId);
+      allow update: if isAdmin();
+    }
+
+    match /gift_transactions/{txId} {
+      allow read: if isSignedIn() && (isOwner(existingData().senderId) || isAdmin());
+      allow create: if isSignedIn() && incomingData().senderId == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}

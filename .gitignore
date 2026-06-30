@@ -1,0 +1,13 @@
+﻿.gradle/
+.idea/
+local.properties
+google-services.json
+app/google-services.json
+firebase.json
+.firebaserc
+build/
+**/build/
+*.apk
+*.aab
+*.jks
+*.keystore
