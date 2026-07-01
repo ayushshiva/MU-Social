@@ -31,6 +31,7 @@ fun EditProfileScreen(
     navController: NavController,
     viewModel: EditProfileViewModel = hiltViewModel()
 ) {
+    android.util.Log.d("EDIT_PROFILE", "Screen opened")
     val fullName = viewModel.fullName.value
     val bio = viewModel.bio.value
     val website = viewModel.website.value

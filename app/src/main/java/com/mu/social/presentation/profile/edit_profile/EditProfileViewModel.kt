@@ -42,6 +42,7 @@ class EditProfileViewModel @Inject constructor(
     val eventFlow = _eventFlow.asSharedFlow()
 
     init {
+        android.util.Log.d("EDIT_PROFILE", "ViewModel initialized")
         loadCurrentUser()
     }
 

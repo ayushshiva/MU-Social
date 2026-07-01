@@ -58,7 +58,10 @@ fun NavGraph(
             route = Screen.Comments.route,
             arguments = listOf(navArgument("postId") { type = NavType.StringType })
         ) { CommentsScreen(navController) }
-        composable(Screen.EditProfile.route) { EditProfileScreen(navController) }
+        composable(Screen.EditProfile.route) {
+            android.util.Log.d("EDIT_PROFILE", "NavGraph reached")
+            EditProfileScreen(navController)
+        }
         composable(Screen.CreateStory.route) { CreateStoryScreen(navController) }
         composable(Screen.Notifications.route) { NotificationScreen(navController) }
         composable(Screen.Dashboard.route) { CreatorDashboardScreen(navController) }
