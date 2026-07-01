@@ -105,7 +105,9 @@ fun ProfileScreen(
                         if (state.isCurrentUser) {
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 Button(
-                                    onClick = { /* Navigate to Edit Profile */ },
+                                    onClick = {
+                                        navController.navigate(Screen.EditProfile.route)
+                                    },
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Text("Edit Profile")
