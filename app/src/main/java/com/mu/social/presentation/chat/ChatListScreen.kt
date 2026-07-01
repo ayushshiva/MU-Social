@@ -1,5 +1,6 @@
 package com.mu.social.presentation.chat
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -12,6 +13,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -21,11 +23,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.mu.social.domain.model.Chat
 import com.mu.social.domain.model.User
 import com.mu.social.presentation.navigation.Screen
+import com.mu.social.utils.LogTag
 import com.mu.social.utils.Resource
 import java.text.SimpleDateFormat
 import java.util.*
@@ -36,7 +40,11 @@ fun ChatListScreen(
     navController: NavController,
     viewModel: ChatListViewModel = hiltViewModel()
 ) {
-    val state = viewModel.state.value
+    val uiState by viewModel.state.collectAsState()
+
+    Log.d(LogTag.CHAT_LIST, "ChatListScreen opened isLoading=${uiState.isLoading} chatsSize=${uiState.chats.size} error=${uiState.error}")
+
+
 
     Scaffold(
         topBar = {
@@ -51,22 +59,37 @@ fun ChatListScreen(
         }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-            if (state.isLoading) {
+            if (uiState.isLoading && uiState.chats.isEmpty()) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
 
-            if (state.error.isNotEmpty()) {
+            val errorText = uiState.error.orEmpty()
+            if (errorText.isNotBlank()) {
                 Text(
-                    text = state.error,
+                    text = errorText,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.align(Alignment.Center).padding(16.dp)
                 )
             }
 
+
+            val chats = uiState.chats
+            if (!uiState.isLoading && chats.isEmpty() && uiState.error.isNullOrBlank()) {
+
+                Text(
+                    text = "No conversations found",
+                    modifier = Modifier.align(Alignment.Center).padding(16.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                return@Box
+            }
+
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(state.chats) { chat ->
+                Log.d(LogTag.CHAT_LIST, "ChatListScreen LazyColumn itemCount=${chats.size}")
+                items(chats) { chat ->
                     var partnerUser by remember { mutableStateOf<User?>(null) }
-                    
+
                     LaunchedEffect(chat.chatId) {
                         viewModel.getChatPartner(chat.participants).collect { result ->
                             if (result is Resource.Success) {
@@ -122,9 +145,9 @@ fun ChatItem(
                 )
             }
         }
-        
+
         Spacer(modifier = Modifier.width(16.dp))
-        
+
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = if (chat.isGroup) chat.groupName ?: "Group" else partnerUser?.fullName ?: "Loading...",
@@ -139,14 +162,13 @@ fun ChatItem(
                 overflow = TextOverflow.Ellipsis
             )
         }
-        
+
         Column(horizontalAlignment = Alignment.End) {
             Text(
                 text = formatTimestamp(chat.lastMessageTimestamp),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            // Unread indicator can be added here if you track unread count in Chat model
         }
     }
 }
@@ -155,3 +177,4 @@ fun formatTimestamp(timestamp: Long): String {
     val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
     return sdf.format(Date(timestamp))
 }
+
